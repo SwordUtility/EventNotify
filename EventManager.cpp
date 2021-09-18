@@ -13,25 +13,68 @@ enum EventCode
 	num,
 };
 
+class EventArgBase
+{
+};
+template<class Type>
+class EATemplate : public EventArgBase
+{
+public:
+	EATemplate(const Type& v) :value(v) {}
+	const Type& value;
+};
+
+class EventArg
+{
+public:
+	using CallBackArgType = std::vector<EventArgBase*>;
+	~EventArg()
+	{
+		for (auto ptr : m_arrArg)
+		{
+			delete ptr;
+		}
+		m_arrArg.clear();
+	}
+	CallBackArgType m_arrArg;
+	template<typename T>
+	void AddArg(const T& arg)
+	{
+		m_arrArg.push_back(new EATemplate<T>(arg));
+	}
+	template<typename T>
+	const T& GetArg(int nIndex) const
+	{
+		const EATemplate<T>* _value = static_cast<const EATemplate<T>*>(m_arrArg[nIndex]);
+		return _value->value;
+	}
+};
+
 class EventManager
 {
 public:
-	using CallbackMap = std::map<unsigned int, std::function<void()>>;
-	using CallBackCodeMap = std::map<EventCode, CallbackMap>;
+	using Function_Arg_Type_const = typename const EventArg*;
+	using Function_Type = typename std::function<void(Function_Arg_Type_const)>;
+protected:
+	using Function_Arg_Type = typename EventArg*;
+	using IDFucntion_Map = typename std::map<unsigned int, Function_Type>;
+	using EventCode_Map = typename std::map<EventCode, IDFucntion_Map>;
+
+public:
 	EventManager()
 	{
 	}
 	virtual ~EventManager()
 	{
-		
+
 	}
 	EventManager(const EventManager&) = delete;
 	EventManager& operator=(const EventManager&) = delete;
 
-	unsigned int Register(EventCode eCode, std::function<void()> pCallBack)
+	unsigned int Register(EventCode eCode, Function_Type pCallBack)
 	{
 		unsigned int id = IDCreater();
-		CallbackMap& mpCallback = m_mpEvent[eCode];
+		IDFucntion_Map& mpCallback = m_mpEvent[eCode];
 		mpCallback.insert(std::make_pair(id, pCallBack));
 		return id;
 	}
@@ -59,24 +102,30 @@ public:
 		}
 	}
 
-	void Notify(EventCode eCode)
+	void Notify(EventCode eCode, Function_Arg_Type_const arg = nullptr)
 	{
 		auto fIt = m_mpEvent.find(eCode);
 		if (fIt != m_mpEvent.end())
 		{
 			for (auto pFuncIt : fIt->second)
 			{
-				pFuncIt.second();
+				pFuncIt.second(arg);
 			}
 		}
 	}
+
+	void Notify(EventCode eCode, const EventArg& arg)
+	{
+		Notify(eCode, (EventManager::Function_Arg_Type_const)&arg.m_arrArg);
+	}
+
 private:
 	unsigned int IDCreater()
 	{
 		return m_nIdCounter++;
 	}
 private:
-	CallBackCodeMap m_mpEvent;
+	EventCode_Map m_mpEvent;
 	unsigned int m_nIdCounter = 0;
 };
 
@@ -100,7 +149,7 @@ public:
 		m_mpEventList.clear();
 	}
 
-	unsigned int Register(EventCode eCode, std::function<void()> pCallBack)
+	unsigned int Register(EventCode eCode, EventManager::Function_Type pCallBack)
 	{
 		unsigned int id = m_tEventManager.Register(eCode, pCallBack);
 		m_mpEventList[eCode].push_back(id);
@@ -181,16 +230,23 @@ public:
 
 	void Resiter()
 	{
-		ev.Register(EventCode::input_k, [=](){
+		ev.Register(EventCode::input_k, [=](EventManager::Function_Arg_Type_const arg) {
+			if (arg != nullptr)
+			{
+				auto _a = arg->GetArg<int>(0);
+				auto _b = arg->GetArg<int>(1);
+				auto _c = arg->GetArg<const char[7]>(2);
+				cout << _a << " " << _b << " " << _c << endl;
+			}
 			this->TriggerSkill();
-		});
-		ev.Register(EventCode::input_k, [=]() {
+					});
+		ev.Register(EventCode::input_k, [=](EventManager::Function_Arg_Type_const) {
 			this->SkillExpUp();
 					});
-		ev.Register(EventCode::input_k, [=]() {
+		ev.Register(EventCode::input_k, [=](EventManager::Function_Arg_Type_const) {
 			this->AttackPowerUP();
 					});
-		ev.Register(EventCode::input_k, [=]() {
+		ev.Register(EventCode::input_k, [=](EventManager::Function_Arg_Type_const) {
 			this->IsHitMonster();
 					});
 	}
@@ -215,7 +271,11 @@ int main()
 		{
 			if (getch() == 'k')
 			{
-				en.Notify(EventCode::input_k);
+				EventArg arg;
+				arg.AddArg(1);
+				arg.AddArg(2);
+				arg.AddArg("hahaha");
+				en.Notify(EventCode::input_k, arg);
 				break;
 			}
 		}
